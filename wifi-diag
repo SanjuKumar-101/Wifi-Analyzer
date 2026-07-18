@@ -1,0 +1,28 @@
+#!/bin/bash
+# WiFi Diagnostic Suite Launcher
+# Usage: wifi-diag [command]
+
+DIR="$(dirname "$(realpath "$0")")"
+
+case "${1:-full}" in
+    scan)     python3 "$DIR/run.py" scan ;;
+    analyze)  python3 "$DIR/run.py" analyze ;;
+    speed)    python3 "$DIR/run.py" speed ;;
+    report)   python3 "$DIR/run.py" report ;;
+    monitor)  python3 "$DIR/run.py" monitor "${2:-30}" "${3:-2}" ;;
+    best)     python3 "$DIR/run.py" best ;;
+    full)     python3 "$DIR/run.py" full ;;
+    *)
+        echo "WiFi Diagnostic Suite"
+        echo "Usage: wifi-diag [command]"
+        echo ""
+        echo "Commands:"
+        echo "  scan      Scan all WiFi networks"
+        echo "  analyze   Channel congestion analysis"
+        echo "  speed     Run speed tests"
+        echo "  report    Generate HTML report"
+        echo "  monitor   Real-time signal monitor"
+        echo "  best      Find best AP"
+        echo "  full      Run everything (default)"
+        ;;
+esac
