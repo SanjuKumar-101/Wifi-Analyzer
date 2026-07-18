@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-import subprocess, json, os, time, sys
+import subprocess, json, os, time, sys, re
 from datetime import datetime
+from utils import get_link_stats, ping_host, run_cmd
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 SPEED_LOG = os.path.join(DATA_DIR, "speed_history.json")
@@ -42,9 +43,9 @@ def run_tcp_stats():
         r = subprocess.run(["ss", "-ti", "dst", "1.1.1.1"], capture_output=True, text=True, timeout=5)
         for line in r.stdout.splitlines():
             if "cwnd" in line:
-                m_cwnd = __import__("re").search(r"cwnd:(\d+)", line)
-                m_rtt = __import__("re").search(r"rtt:(\d+\.?\d*)", line)
-                m_bw = __import__("re").search(r"bw:(\d+\.?\d*)", line)
+                m_cwnd = re.search(r"cwnd:(\d+)", line)
+                m_rtt = re.search(r"rtt:(\d+\.?\d*)", line)
+                m_bw = re.search(r"bw:(\d+\.?\d*)", line)
                 if m_cwnd: stats["cwnd"] = int(m_cwnd.group(1))
                 if m_rtt: stats["rtt_ms"] = float(m_rtt.group(1))
                 if m_bw: stats["bandwidth_kbps"] = float(m_bw.group(1))
@@ -55,39 +56,32 @@ def run_tcp_stats():
 
 def run_latency_test():
     results = {}
-    targets = [("Gateway", "10.227.0.1"), ("Cloudflare", "1.1.1.1"), ("Google", "8.8.8.8")]
+    targets = [("Cloudflare", "1.1.1.1"), ("Google", "8.8.8.8")]
+    import platform
+    if platform.system() != "Windows":
+        targets.insert(0, ("Gateway", "10.227.0.1"))
     for name, host in targets:
         try:
-            r = subprocess.run(
-                ["ping", "-c", "5", "-W", "3", host],
-                capture_output=True, text=True, timeout=10
-            )
-            loss_line = [l for l in r.stdout.splitlines() if "packet loss" in l]
-            rtt_line = [l for l in r.stdout.splitlines() if "rtt" in l or "round-trip" in l]
+            r = ping_host(host, 5)
+            loss_line = [l for l in r.stdout.splitlines() if "packet loss" in l or "Lost" in l]
+            rtt_line = [l for l in r.stdout.splitlines() if "rtt" in l or "round-trip" in l or "Approximate" in l]
             if loss_line:
-                loss = __import__("re").search(r"(\d+)% packet loss", loss_line[0])
+                loss = re.search(r"(\d+)%", loss_line[0])
                 results[name] = {"loss_pct": int(loss.group(1)) if loss else 100}
             if rtt_line:
-                parts = rtt_line[0].split("=")[1].strip().split("/")
+                nums = re.findall(r"(\d+\.?\d*)", rtt_line[0].split("=")[-1] if "=" in rtt_line[0] else rtt_line[0])
                 results[name] = results.get(name, {})
-                results[name]["min_ms"] = float(parts[0])
-                results[name]["avg_ms"] = float(parts[1])
-                results[name]["max_ms"] = float(parts[2])
+                if len(nums) >= 3:
+                    results[name]["min_ms"] = float(nums[0])
+                    results[name]["avg_ms"] = float(nums[1])
+                    results[name]["max_ms"] = float(nums[2])
         except:
             results[name] = {"error": "timeout"}
     return results
 
 def get_signal_history():
-    try:
-        r = subprocess.run(["iw", "dev", "wlp0s20f3", "link"], capture_output=True, text=True, timeout=5)
-        for line in r.stdout.splitlines():
-            if "signal:" in line:
-                import re
-                m = re.search(r"(-?\d+\.?\d*)\s*dBm", line)
-                if m: return float(m.group(1))
-    except:
-        pass
-    return None
+    link = get_link_stats()
+    return link.get("signal", None)
 
 def load_history():
     if os.path.exists(SPEED_LOG):
@@ -102,7 +96,7 @@ def save_history(history):
 
 def run_full_test():
     print("=" * 60)
-    print("  WIFI NETWORK DIAGNOSTIC SUITE - Speed Test")
+    print("  WiFi Diagnostic Suite - Speed Test")
     print("=" * 60)
 
     signal = get_signal_history()

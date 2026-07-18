@@ -1,0 +1,14 @@
+# WiFi Analyzer
+# No external Python packages required - uses only stdlib + system tools
+# 
+# System dependencies (install manually based on your OS):
+#
+# Linux:
+#   sudo apt install iw wireless-tools curl iputils-ping
+#   (or equivalent for your distro)
+#
+# macOS:
+#   Built-in (airport utility, ping, curl included)
+#
+# Windows:
+#   Built-in (netsh, ping, curl included)

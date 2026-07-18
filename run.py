@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""
-WiFi Network Diagnostic Suite - Main Launcher
-For Parul University Network Analysis
-"""
-import sys, os, subprocess, time, signal as sig
+import sys, os, subprocess, time, re
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
 
+from utils import get_wifi_interface, get_active_ssid, get_link_stats, get_current_connection, run_cmd
+
 BANNER = """
-\x1b[36m╔══════════════════════════════════════════════════════════╗
-║          WiFi Network Diagnostic Suite v1.0              ║
-║          Parul University Hostel Network                 ║
-╚══════════════════════════════════════════════════════════╝\x1b[0m
-"""
+\x1b[36m
+ ██╗    ██╗██╗███████╗██╗    ███████╗ ██████╗ █████╗ ███╗   ██╗
+ ██║    ██║██║██╔════╝██║    ██╔════╝██╔════╝██╔══██╗████╗  ██║
+ ██║ █╗ ██║██║█████╗  ██║    ███████╗██║     ███████║██╔██╗ ██║
+ ██║███╗██║██║██╔══╝  ██║    ╚════██║██║     ██╔══██║██║╚██╗██║
+ ╚███╔███╔╝██║██║     ██║    ███████║╚██████╗██║  ██║██║ ╚████║
+  ╚══╝╚══╝ ╚═╝╚═╝     ╚═╝    ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝
+            WiFi Diagnostic Suite v1.0
+\x1b[0m"""
 
 def banner():
     print(BANNER)
@@ -26,8 +28,8 @@ def cmd_scan():
     link = get_link_stats()
     ps = get_power_save()
     print(f"\x1b[32m[+] Found {len(networks)} networks\x1b[0m")
-    print(f"    Secure Networks: {len([n for n in networks if n.get('ssid') == 'Secure Network'])}")
-    print(f"    Connected: {conn.get('ssid','?')} at {conn.get('signal_dbm','?')} dBm")
+    active = get_active_ssid() or "unknown"
+    print(f"    Connected: {conn.get('ssid', active)} at {conn.get('signal_dbm', '?')} dBm")
     print(f"    Power save: {'OFF' if ps else 'ON'}")
     path, _ = save_scan(networks, conn, link, os.path.join(BASE, "data"))
     print(f"    Saved: {path}")
@@ -43,8 +45,8 @@ def cmd_analyze():
     path, data = save_scan(networks, conn, link, os.path.join(BASE, "data"))
     result = generate_analysis(data)
     out_path = path.replace("scan_", "analysis_")
+    import json
     with open(out_path, "w") as f:
-        import json
         json.dump(result, f, indent=2)
     mc = result['summary']['my_connection']
     print(f"\x1b[32m[+] Analysis complete\x1b[0m")
@@ -76,23 +78,14 @@ def cmd_report():
     return path
 
 def cmd_monitor(duration=30, interval=2):
-    import re
     print(f"\x1b[33m[*] Monitoring signal for {duration}s (every {interval}s)...\x1b[0m")
     print(f"    {'Time':<10} {'Signal':>8} {'Quality':>8} {'RX Rate':>10} {'Status'}")
     print("    " + "-" * 55)
     start = time.time()
     while time.time() - start < duration:
-        r = subprocess.run(["iw", "dev", "wlp0s20f3", "link"], capture_output=True, text=True, timeout=5)
-        sig_val = None
-        rx = None
-        for line in r.stdout.splitlines():
-            if "signal:" in line:
-                m = re.search(r"(-?\d+\.?\d*)\s*dBm", line)
-                if m: sig_val = float(m.group(1))
-            elif "rx bitrate:" in line:
-                m = re.search(r"(\d+\.?\d*)\s*MBit/s", line)
-                if m: rx = float(m.group(1))
-
+        link = get_link_stats()
+        sig_val = link.get("signal")
+        rx = link.get("rx_rate", 0)
         elapsed = time.time() - start
         t = time.strftime("%H:%M:%S")
         if sig_val:
@@ -106,71 +99,37 @@ def cmd_monitor(duration=30, interval=2):
     print("\x1b[32m[+] Monitoring complete\x1b[0m")
 
 def cmd_best_ap():
-    import re, json
+    from utils import scan_networks as do_scan, get_current_connection
     print("\x1b[33m[*] Finding best AP...\x1b[0m")
-    r = subprocess.run(['iw', 'dev', 'wlp0s20f3', 'scan'], capture_output=True, text=True, timeout=30)
-    aps = []
-    ap = {}
-    for line in r.stdout.splitlines():
-        line = line.strip()
-        if line.startswith('BSS '):
-            if ap and 'signal' in ap:
-                aps.append(ap)
-            mac = line.split()[1].rstrip(':')
-            ap = {'bssid': mac.upper()}
-        elif line.startswith('freq:') and 'freq' not in ap:
-            m = re.search(r'freq:\s*(\d+\.?\d*)', line)
-            if m:
-                f = float(m.group(1))
-                ap['freq'] = f
-                ap['band'] = '2.4G' if f < 3000 else '5G'
-        elif line.startswith('signal:'):
-            m = re.search(r'(-?\d+\.?\d*)\s*dBm', line)
-            if m: ap['signal'] = float(m.group(1))
-        elif line.startswith('SSID:') and 'Secure Network' in line and '_2.4G' not in line:
-            ap['ssid'] = line.split('SSID:',1)[1].strip()
-        elif 'station count:' in line:
-            m = re.search(r'station count:\s*(\d+)', line)
-            if m: ap['stations'] = int(m.group(1))
-        elif 'channel utilisation:' in line:
-            m = re.search(r'channel utilisation:\s*(\d+)/255', line)
-            if m: ap['util'] = int(m.group(1))
-    if ap and 'signal' in ap:
-        aps.append(ap)
+    aps = do_scan()
 
-    secure = [a for a in aps if a.get('ssid') == 'Secure Network']
+    active = get_active_ssid() or ""
+    secure = [a for a in aps if a.get("ssid") == active]
 
-    # Score: signal strength minus congestion penalties
     for a in secure:
-        sig = a.get('signal', -100)
-        sta = a.get('stations', 0)
-        ut = a.get('util', 0)
+        sig = a.get("signal_dbm", -100)
+        sta = a.get("stations", 0)
+        ut = a.get("channel_util", 0)
         sig_score = max(0, 100 + sig)
         a['score'] = sig_score - (ut / 2.55) - (sta * 2)
 
     secure.sort(key=lambda x: x.get('score', -999), reverse=True)
 
-    # Get current
-    cr = subprocess.run(['iw', 'dev', 'wlp0s20f3', 'link'], capture_output=True, text=True, timeout=5)
-    my_bssid = ''
-    for l in cr.stdout.splitlines():
-        if 'Connected to' in l:
-            m = re.search(r'([0-9a-f:]+)', l)
-            if m: my_bssid = m.group(1).upper()
+    conn = get_current_connection()
+    my_bssid = conn.get("bssid", "")
 
     print(f"\n    {'RANK':<5} {'BSSID':<20} {'Band':<5} {'Signal':>8} {'Score':>6} {'Status'}")
     print("    " + "-" * 60)
     for i, a in enumerate(secure[:10]):
-        marker = " \x1b[33m<<< YOU\x1b[0m" if a['bssid'] == my_bssid else ""
+        marker = " \x1b[33m<<< YOU\x1b[0m" if a.get('bssid', '') == my_bssid else ""
         color = "\x1b[32m" if a.get('score',0) > 40 else "\x1b[33m" if a.get('score',0) > 20 else "\x1b[31m"
-        print(f"    {i+1:<5} {a['bssid']:<20} {a.get('band','?'):<5} {a.get('signal',0):>7.0f}dBm {color}{a.get('score',0):>5.0f}\x1b[0m{marker}")
+        print(f"    {i+1:<5} {a['bssid']:<20} {a.get('band','?'):<5} {a.get('signal_dbm',0):>7.0f}dBm {color}{a.get('score',0):>5.0f}\x1b[0m{marker}")
 
     if secure:
         best = secure[0]
-        print(f"\n    \x1b[32m[+] Best AP: {best['bssid']} ({best.get('band')}, {best.get('signal'):.0f} dBm, score {best.get('score',0):.0f})\x1b[0m")
+        print(f"\n    \x1b[32m[+] Best AP: {best['bssid']} ({best.get('band')}, {best.get('signal_dbm',0):.0f} dBm, score {best.get('score',0):.0f})\x1b[0m")
         if best['bssid'] != my_bssid:
-            print(f"    \x1b[33m[!] You're NOT on the best AP. Run: sudo nmcli connection modify 'Secure Network' 802-11-wireless.bssid {best['bssid']}\x1b[0m")
-            print(f"    \x1b[33m    Then: sudo nmcli connection down 'Secure Network' && sudo nmcli connection up 'Secure Network'\x1b[0m")
+            print(f"    \x1b[33m[!] You're NOT on the best AP.\x1b[0m")
         else:
             print(f"    \x1b[32m[+] You're already on the best AP!\x1b[0m")
     return secure
@@ -191,9 +150,14 @@ def cmd_full():
     print(f"  ALL DONE! Open the report:")
     print(f"  file://{path}")
     print(f"{'='*60}\x1b[0m")
-    # Auto-open in browser
     try:
-        subprocess.Popen(["xdg-open", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        import platform
+        if platform.system() == "Darwin":
+            subprocess.Popen(["open", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        elif platform.system() == "Windows":
+            os.startfile(path)
+        else:
+            subprocess.Popen(["xdg-open", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except:
         pass
 

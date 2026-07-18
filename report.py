@@ -2,6 +2,7 @@
 import json, os, glob, subprocess, re
 from datetime import datetime
 from collections import defaultdict
+from utils import get_current_connection, get_link_stats, get_power_save, get_active_ssid, run_cmd
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
@@ -22,39 +23,16 @@ def get_all_data():
     return scan_data, speed_data
 
 def get_live_data():
-    conn = {}
-    link = {}
-    r = subprocess.run(["iw", "dev", "wlp0s20f3", "link"], capture_output=True, text=True, timeout=5)
-    for line in r.stdout.splitlines():
-        if "Connected to" in line:
-            m = re.search(r"([0-9a-f:]+)", line)
-            if m: conn["bssid"] = m.group(1).upper()
-        elif "SSID:" in line:
-            conn["ssid"] = line.split("SSID:", 1)[1].strip()
-        elif "freq:" in line:
-            m = re.search(r"freq:\s*(\d+\.?\d*)", line)
-            if m: conn["freq"] = float(m.group(1))
-        elif "signal:" in line:
-            m = re.search(r"(-?\d+\.?\d*)\s*dBm", line)
-            if m: link["signal"] = float(m.group(1))
-        elif "rx bitrate:" in line:
-            m = re.search(r"(\d+\.?\d*)\s*MBit/s", line)
-            if m: link["rx"] = float(m.group(1))
-            m2 = re.search(r"HE-MCS\s+(\d+)", line)
-            if m2: link["rx_mcs"] = int(m2.group(1))
-        elif "tx bitrate:" in line:
-            m = re.search(r"(\d+\.?\d*)\s*MBit/s", line)
-            if m: link["tx"] = float(m.group(1))
-            m2 = re.search(r"HE-MCS\s+(\d+)", line)
-            if m2: link["tx_mcs"] = int(m2.group(1))
+    conn = get_current_connection()
+    link = get_link_stats()
+    ps = get_power_save()
+    link["power_save"] = ps
 
-    ps = subprocess.run(["iw", "dev", "wlp0s20f3", "get", "power_save"], capture_output=True, text=True, timeout=5)
-    link["power_save"] = "off" in ps.stdout.lower()
-
-    nm = subprocess.run(["nmcli", "-t", "-f", "GENERAL", "device", "show", "wlp0s20f3"], capture_output=True, text=True, timeout=5)
-    for line in nm.stdout.splitlines():
-        if "STATE:" in line:
-            conn["state"] = line.split(":", 1)[1].strip()
+    active = get_active_ssid()
+    if active:
+        conn["ssid"] = active
+    if not conn.get("state"):
+        conn["state"] = "connected" if conn.get("bssid") else "disconnected"
 
     return conn, link
 
@@ -67,6 +45,11 @@ def generate_html():
         networks = scan_data.get("networks", [])
     secure = [n for n in networks if n.get("ssid") == "Secure Network"]
 
+    link["rx"] = link.get("rx_rate", link.get("rx", 0))
+    link["tx"] = link.get("tx_rate", link.get("tx", 0))
+    link["signal"] = link.get("signal", conn.get("signal_dbm", -80))
+    link["rx_mcs"] = link.get("rx_mcs", "?")
+    link["tx_mcs"] = link.get("tx_mcs", "?")
     signal = link.get("signal", -80)
     if signal >= -50: sig_quality = 100; sig_color = "#2ecc71"
     elif signal >= -60: sig_quality = 85; sig_color = "#27ae60"
