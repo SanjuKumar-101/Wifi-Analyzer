@@ -9,8 +9,6 @@
 
 <h1 align="center">
   <br/>
-  <img src="https://raw.githubusercontent.com/AnilDaum/awesome-wifi-analyzer/main/assets/wifi-signal.svg" width="120" alt="WiFi Signal" onerror="this.style.display='none'"/>
-  <br/>
   WiFi Analyzer
   <br/>
 </h1>
