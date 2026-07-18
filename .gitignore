@@ -8,8 +8,16 @@ env/
 venv/
 .venv/
 
-# Generated data
-data/
+# Generated data (keep directory structure)
+data/*
+!data/.gitkeep
 
 # Generated HTML report
 report.html
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

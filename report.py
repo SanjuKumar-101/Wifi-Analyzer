@@ -43,7 +43,8 @@ def generate_html():
     networks = []
     if scan_data:
         networks = scan_data.get("networks", [])
-    secure = [n for n in networks if n.get("ssid") == "Secure Network"]
+    my_ssid = conn.get("ssid") or (scan_data or {}).get("connection", {}).get("ssid")
+    secure = [n for n in networks if n.get("ssid") == my_ssid] if my_ssid else networks
 
     link["rx"] = link.get("rx_rate", link.get("rx", 0))
     link["tx"] = link.get("tx_rate", link.get("tx", 0))
@@ -89,7 +90,7 @@ def generate_html():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WiFi Network Diagnostic Report - Parul University</title>
+<title>WiFi Network Diagnostic Report</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -133,7 +134,7 @@ tr:hover {{ background: #16163a; }}
 <body>
 <div class="header">
   <h1>WiFi Network Diagnostic Report</h1>
-  <p>Parul University Hostel Network Analysis | Generated {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+  <p>WiFi Network Analysis | Generated {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
 </div>
 <div class="container">
 
@@ -159,7 +160,7 @@ tr:hover {{ background: #16163a; }}
   <div class="card">
     <h3>Connected AP</h3>
     <div style="font-size:14px;color:#fff;margin-top:8px">BSSID: {conn.get('bssid', 'N/A')}</div>
-    <div style="font-size:13px;color:#888;margin-top:4px">Band: {conn.get('freq', 0) > 3000 and '5GHz' or '2.4GHz'} | Channel: {int((conn.get('freq', 5000) - 5000) / 5) if conn.get('freq', 0) > 3000 else '?'}</div>
+    <div style="font-size:13px;color:#888;margin-top:4px">Band: {(conn.get('frequency') or conn.get('freq', 0)) > 3000 and '5GHz' or '2.4GHz'} | Channel: {int(((conn.get('frequency') or conn.get('freq', 5000)) - 5000) / 5) if (conn.get('frequency') or conn.get('freq', 0)) > 3000 else '?'}</div>
     <div style="font-size:13px;color:#888">State: {conn.get('state', '?')}</div>
   </div>
 </div>
@@ -167,7 +168,7 @@ tr:hover {{ background: #16163a; }}
 <div class="section-title">Network Overview</div>
 <div class="grid">
   <div class="card">
-    <h3>Secure Network APs</h3>
+    <h3>{my_ssid or 'Network'} APs</h3>
     <div class="stat">{total_aps}</div>
     <div class="stat-label">Total access points visible</div>
   </div>
@@ -197,7 +198,7 @@ tr:hover {{ background: #16163a; }}
 
 <div class="section-title">AP Signal Comparison</div>
 <div class="card">
-  <h3>Secure Network APs - Signal Strength</h3>
+  <h3>{my_ssid or 'Network'} APs - Signal Strength</h3>
   <div class="chart-container" style="height:350px"><canvas id="apChart"></canvas></div>
 </div>
 
@@ -207,7 +208,7 @@ tr:hover {{ background: #16163a; }}
   <div class="chart-container" style="height:300px"><canvas id="channelChart"></canvas></div>
 </div>
 
-<div class="section-title">All Secure Network APs</div>
+<div class="section-title">All {my_ssid or 'Network'} APs</div>
 <div class="card">
   <table>
     <tr><th>BSSID</th><th>Band</th><th>Ch</th><th>Signal</th><th>Quality</th><th>Users</th><th>Util</th><th>Status</th></tr>
@@ -228,26 +229,26 @@ tr:hover {{ background: #16163a; }}
 <div class="card">
   <h3>Speed Cap Investigation</h3>
   <div style="padding:16px;background:#1a1a2e;border-radius:8px;margin-top:12px">
-    <p style="color:#f39c12;font-weight:600;margin-bottom:8px">The ~30 Mbps cap is NOT from WiFi. Here's the evidence:</p>
+    <p style="color:#f39c12;font-weight:600;margin-bottom:8px">If your WiFi link speed is much higher than your actual throughput, the bottleneck is NOT WiFi:</p>
     <ul style="padding-left:20px;line-height:2">
-      <li>WiFi link speed: <strong style="color:#2ecc71">{link.get('rx',0):.0f} Mbps</strong> (physical layer) - 10x the cap</li>
-      <li>WiFi signal: <strong style="color:#2ecc71">{signal} dBm</strong> ({sig_quality}% quality) - more than adequate</li>
+      <li>WiFi link speed: <strong style="color:#2ecc71">{link.get('rx',0):.0f} Mbps</strong> (physical layer)</li>
+      <li>WiFi signal: <strong style="color:#2ecc71">{signal} dBm</strong> ({sig_quality}% quality)</li>
       <li>No packet loss detected on local network</li>
-      <li>The bottleneck is the <strong>ISP backhaul</strong> (internet line to campus) or <strong>CloudPath rate limiting</strong></li>
+      <li>Possible causes: <strong>ISP backhaul limits</strong>, <strong>per-user rate limiting</strong>, or <strong>network congestion</strong></li>
     </ul>
-    <p style="color:#00d4ff;margin-top:12px;font-weight:600">To break 30 Mbps, the department must:</p>
+    <p style="color:#00d4ff;margin-top:12px;font-weight:600">To investigate further:</p>
     <ol style="padding-left:20px;line-height:2;color:#aaa">
-      <li>Check CloudPath RADIUS for per-user rate limits (likely 30 Mbps cap)</li>
+      <li>Check if your network has per-user rate limits configured</li>
       <li>Verify ISP contract bandwidth vs actual usage</li>
-      <li>Implement per-AP bandwidth balancing</li>
-      <li>Consider upgrading the internet backhaul</li>
+      <li>Test at different times to rule out congestion</li>
+      <li>Contact network administrator for backhaul capacity info</li>
     </ol>
   </div>
 </div>
 
 </div>
 <div class="footer">
-  WiFi Diagnostic Suite v1.0 | Built for Parul University Network Analysis
+  WiFi Diagnostic Suite v1.0 | Built for WiFi Network Analysis
 </div>
 
 <script>

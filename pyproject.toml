@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wifi-analyzer"
+version = "1.0.0"
+description = "Cross-platform WiFi diagnostic toolkit for campus and enterprise networks"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+keywords = ["wifi", "network", "diagnostic", "analyzer", "scanner"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Networking",
+    "Topic :: System :: Monitoring",
+]
+
+[project.scripts]
+wifi-analyzer = "run:main"
+
+[project.urls]
+Repository = "https://github.com/SanjuKumar-101/Wifi-Analyzer"
+
+[tool.setuptools]
+py-modules = ["run", "utils", "scanner", "analyzer", "speedtest", "report"]

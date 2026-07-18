@@ -105,6 +105,21 @@ Ranks every AP by a **composite score**: signal strength minus congestion penalt
 
 ## Quick Start
 
+### One-Command Setup (Any OS)
+
+```bash
+git clone https://github.com/SanjuKumar-101/Wifi-Analyzer.git
+cd Wifi-Analyzer
+bash setup.sh
+```
+
+The `setup.sh` script will:
+- Check for Python 3.10+
+- Install missing system dependencies (Linux only)
+- Make scripts executable
+- Verify all files compile correctly
+- Create required directories
+
 ### Linux
 
 ```bash
@@ -218,6 +233,117 @@ This accounts for both raw signal strength AND how busy the channel is. A strong
 | Speed test | `curl` (usually pre-installed) | `curl` (built-in) | `curl` (built-in) |
 | Latency | `ping` (usually pre-installed) | `ping` (built-in) | `ping` (built-in) |
 | Elevated privs | `sudo` needed for scan | Not needed | Not needed |
+
+<br/>
+
+---
+
+## Steps to Run on Another Machine
+
+### Prerequisites
+- Python 3.10 or higher
+- Git (to clone the repository)
+- WiFi adapter (built-in on laptops)
+
+### Step-by-Step Instructions
+
+#### 1. Clone the Repository
+```bash
+git clone https://github.com/SanjuKumar-101/Wifi-Analyzer.git
+cd Wifi-Analyzer
+```
+
+#### 2. Run Setup Script
+```bash
+bash setup.sh
+```
+This will install dependencies and verify everything works.
+
+#### 3. Run the Analyzer
+
+**Linux (requires sudo for WiFi scanning):**
+```bash
+sudo ./wifi-diag full
+```
+
+**macOS:**
+```bash
+python3 run.py full
+```
+
+**Windows (run Command Prompt or PowerShell as Administrator):**
+```bash
+python run.py full
+```
+
+#### 4. View Results
+- The HTML report will open automatically in your browser
+- If not, open `report.html` manually
+- Console output shows all diagnostic information
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `full` | Run complete diagnostic suite |
+| `scan` | Scan all WiFi networks |
+| `analyze` | Channel congestion analysis |
+| `speed` | Run speed tests |
+| `monitor` | Real-time signal monitor |
+| `best` | Find best access point |
+| `report` | Generate HTML report |
+
+### Manual Dependency Installation
+
+If `setup.sh` fails, install dependencies manually:
+
+**Ubuntu/Debian:**
+```bash
+sudo apt install python3 iw wireless-tools curl iputils-ping
+```
+
+**Fedora/RHEL:**
+```bash
+sudo dnf install python3 iw wireless-tools curl iputils
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -S python iw wireless_tools curl iputils
+```
+
+**macOS:**
+```bash
+# Install Homebrew if not present
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew install python3
+```
+
+**Windows:**
+1. Install Python from https://python.org
+2. Ensure `curl` is available (built into Windows 10+)
+3. No additional packages needed
+
+### Troubleshooting
+
+**"No WiFi interface found" (Linux):**
+```bash
+# Check if WiFi adapter exists
+iwconfig
+# Bring interface up
+sudo ip link set wlan0 up
+```
+
+**"Permission denied" (Linux):**
+```bash
+# WiFi scanning requires root
+sudo ./wifi-diag scan
+```
+
+**"command not found: iw" (Linux):**
+```bash
+sudo apt install iw
+```
 
 <br/>
 

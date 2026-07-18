@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import subprocess, json, os, time, sys, re
 from datetime import datetime
-from utils import get_link_stats, ping_host, run_cmd
+from utils import get_link_stats, ping_host, run_cmd, get_gateway
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 SPEED_LOG = os.path.join(DATA_DIR, "speed_history.json")
@@ -38,18 +38,31 @@ def run_speed_test():
     return results
 
 def run_tcp_stats():
+    import platform
     stats = {}
+    OS = platform.system()
     try:
-        r = subprocess.run(["ss", "-ti", "dst", "1.1.1.1"], capture_output=True, text=True, timeout=5)
-        for line in r.stdout.splitlines():
-            if "cwnd" in line:
-                m_cwnd = re.search(r"cwnd:(\d+)", line)
-                m_rtt = re.search(r"rtt:(\d+\.?\d*)", line)
-                m_bw = re.search(r"bw:(\d+\.?\d*)", line)
-                if m_cwnd: stats["cwnd"] = int(m_cwnd.group(1))
-                if m_rtt: stats["rtt_ms"] = float(m_rtt.group(1))
-                if m_bw: stats["bandwidth_kbps"] = float(m_bw.group(1))
-                break
+        if OS == "Linux":
+            r = subprocess.run(["ss", "-ti", "dst", "1.1.1.1"], capture_output=True, text=True, timeout=5)
+            for line in r.stdout.splitlines():
+                if "cwnd" in line:
+                    m_cwnd = re.search(r"cwnd:(\d+)", line)
+                    m_rtt = re.search(r"rtt:(\d+\.?\d*)", line)
+                    m_bw = re.search(r"bw:(\d+\.?\d*)", line)
+                    if m_cwnd: stats["cwnd"] = int(m_cwnd.group(1))
+                    if m_rtt: stats["rtt_ms"] = float(m_rtt.group(1))
+                    if m_bw: stats["bandwidth_kbps"] = float(m_bw.group(1))
+                    break
+        elif OS == "Darwin":
+            r = subprocess.run(["netstat", "-ti", "-n"], capture_output=True, text=True, timeout=5)
+            for line in r.stdout.splitlines():
+                if "1.1.1.1" in line:
+                    parts = line.split()
+                    for p in parts:
+                        if "ms" in p:
+                            try: stats["rtt_ms"] = float(p.replace("ms", "").replace("<", ""))
+                            except: pass
+                    break
     except:
         pass
     return stats
@@ -57,9 +70,9 @@ def run_tcp_stats():
 def run_latency_test():
     results = {}
     targets = [("Cloudflare", "1.1.1.1"), ("Google", "8.8.8.8")]
-    import platform
-    if platform.system() != "Windows":
-        targets.insert(0, ("Gateway", "10.227.0.1"))
+    gw = get_gateway()
+    if gw:
+        targets.insert(0, ("Gateway", gw))
     for name, host in targets:
         try:
             r = ping_host(host, 5)

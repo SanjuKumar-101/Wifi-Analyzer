@@ -19,7 +19,7 @@ def analyze_channels(networks):
             ch_data[key]["max_signal"] = n["signal_dbm"]
     return dict(ch_data)
 
-def analyze_congestion(ch_data):
+def analyze_congestion(ch_data, my_ssid=None):
     issues = []
     ch24 = {k: v for k, v in ch_data.items() if "2.4GHz" in k}
     ch5 = {k: v for k, v in ch_data.items() if "5GHz" in k}
@@ -51,7 +51,8 @@ def analyze_congestion(ch_data):
                 "message": f"Channel {key.split('_')[1]}: utilization {data['util']}/255 ({data['util']*100//255}%) — moderately busy"
             })
 
-    secure_nets = [n for n in sum([d["networks"] for d in ch_data.values()], []) if n.get("ssid") == "Secure Network"]
+    all_nets = sum([d["networks"] for d in ch_data.values()], [])
+    secure_nets = [n for n in all_nets if n.get("ssid") == my_ssid] if my_ssid else []
     my_nets = [n for n in secure_nets if n.get("is_mine")]
     other_secure = [n for n in secure_nets if not n.get("is_mine")]
 
@@ -109,13 +110,15 @@ def generate_analysis(data):
     networks = data.get("networks", [])
     conn = data.get("connection", {})
     link = data.get("link_stats", {})
+    my_ssid = conn.get("ssid") or data.get("my_ssid")
 
     ch_data = analyze_channels(networks)
-    issues = analyze_congestion(ch_data)
+    issues = analyze_congestion(ch_data, my_ssid)
     optimal = get_optimal_channel(ch_data)
 
-    secure_24 = [n for n in networks if n.get("ssid") == "Secure Network" and n.get("band") == "2.4GHz"]
-    secure_5 = [n for n in networks if n.get("ssid") == "Secure Network" and n.get("band") == "5GHz"]
+    same_ssid = [n for n in networks if n.get("ssid") == my_ssid] if my_ssid else []
+    same_ssid_24 = [n for n in same_ssid if n.get("band") == "2.4GHz"]
+    same_ssid_5 = [n for n in same_ssid if n.get("band") == "5GHz"]
     my_net = [n for n in networks if n.get("is_mine")]
 
     analysis = {
@@ -126,8 +129,8 @@ def generate_analysis(data):
         "summary": {
             "total_aps": len(networks),
             "total_stations": sum(n.get("stations", 0) for n in networks),
-            "secure_networks_2_4": len(secure_24),
-            "secure_networks_5": len(secure_5),
+            "same_ssid_networks_2_4": len(same_ssid_24),
+            "same_ssid_networks_5": len(same_ssid_5),
             "my_connection": {
                 "bssid": conn.get("bssid", "N/A"),
                 "signal_dbm": conn.get("signal_dbm", 0),
@@ -161,7 +164,7 @@ if __name__ == "__main__":
 
     print(f"\n=== NETWORK ANALYSIS ===")
     print(f"Total APs: {result['summary']['total_aps']}")
-    print(f"Secure Network APs: {result['summary']['secure_networks_2_4']} (2.4GHz) + {result['summary']['secure_networks_5']} (5GHz)")
+    print(f"Same SSID APs: {result['summary']['same_ssid_networks_2_4']} (2.4GHz) + {result['summary']['same_ssid_networks_5']} (5GHz)")
     print(f"Total stations: {result['summary']['total_stations']}")
     print(f"\nYour connection:")
     mc = result['summary']['my_connection']

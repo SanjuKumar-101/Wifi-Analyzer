@@ -7,7 +7,7 @@ def run_cmd(cmd, timeout=10):
     try:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        return subprocess.CompletedInstance(cmd, returncode=1, stdout="", stderr="")
+        return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr="")
 
 def get_wifi_interface():
     if OS == "Linux":
@@ -15,8 +15,31 @@ def get_wifi_interface():
     elif OS == "Darwin":
         return "en0"
     elif OS == "Windows":
-        return None
+        return _get_iface_win()
     return None
+
+
+def _get_iface_win():
+    try:
+        r = run_cmd(["netsh", "wlan", "show", "interfaces"], timeout=5)
+        for line in r.stdout.splitlines():
+            if "Name" in line and ":" in line:
+                name = line.split(":", 1)[1].strip()
+                if name and "Wi-Fi" in name or "Wireless" in name or "wlan" in name.lower():
+                    return name
+        for line in r.stdout.splitlines():
+            if "Name" in line and ":" in line:
+                return line.split(":", 1)[1].strip()
+    except:
+        pass
+    return None
+
+def ping_host(host, count=5):
+    if OS == "Windows":
+        cmd = ["ping", "-n", str(count), "-w", "3000", host]
+    else:
+        cmd = ["ping", "-c", str(count), "-W", "3", host]
+    return run_cmd(cmd, timeout=15)
 
 def _get_iface_linux():
     try:
@@ -300,27 +323,37 @@ def get_current_connection():
 
 def _get_conn_linux():
     iface = get_wifi_interface()
-    if not iface: return {}
+    if not iface:
+        return {}
     r = run_cmd(["iw", "dev", iface, "link"], timeout=5)
     info = {}
     for line in r.stdout.splitlines():
         if "Connected to" in line:
             m = re.search(r"([0-9a-f:]+)", line)
-            if m: info["bssid"] = m.group(1).upper()
+            if m:
+                info["bssid"] = m.group(1).upper()
         elif "SSID:" in line:
             info["ssid"] = line.split("SSID:", 1)[1].strip()
         elif "freq:" in line:
             m = re.search(r"freq:\s*(\d+\.?\d*)", line)
-            if m: info["frequency"] = float(m.group(1))
+            if m:
+                freq = float(m.group(1))
+                info["frequency"] = freq
+                info["freq"] = freq
         elif "signal:" in line:
             m = re.search(r"signal:\s*(-?\d+\.?\d*)\s*dBm", line)
-            if m: info["signal_dbm"] = float(m.group(1))
+            if m:
+                info["signal_dbm"] = float(m.group(1))
         elif "rx bitrate:" in line:
             m = re.search(r"(\d+\.?\d*)\s*MBit/s", line)
-            if m: info["rx_mbps"] = float(m.group(1))
+            if m:
+                info["rx_mbps"] = float(m.group(1))
         elif "tx bitrate:" in line:
             m = re.search(r"(\d+\.?\d*)\s*MBit/s", line)
-            if m: info["tx_mbps"] = float(m.group(1))
+            if m:
+                info["tx_mbps"] = float(m.group(1))
+    if info.get("bssid"):
+        info["state"] = "connected"
     return info
 
 def _get_conn_mac():
@@ -332,6 +365,22 @@ def _get_conn_mac():
         r = run_cmd(["ipconfig", "getifaddr", "en0"], timeout=5)
         if r.stdout.strip():
             info["ip"] = r.stdout.strip()
+    except:
+        pass
+    try:
+        iface = get_wifi_interface()
+        if iface:
+            r = run_cmd(["airport", "-I"], timeout=5)
+            for line in r.stdout.splitlines():
+                line = line.strip()
+                if "channel" in line.lower():
+                    m = re.search(r"channel:\s*(\d+)", line, re.IGNORECASE)
+                    if m:
+                        ch = int(m.group(1))
+                        info["channel"] = ch
+                        freq = 2412 if ch <= 14 else 5180 + (ch - 36) * 5
+                        info["frequency"] = freq
+                        info["freq"] = freq
     except:
         pass
     try:
@@ -370,6 +419,15 @@ def _get_conn_win():
             elif "Transmit" in line and "Rate" in line:
                 try:
                     info["tx_mbps"] = float(line.split(":", 1)[1].strip().replace("Mbps", "").strip())
+                except:
+                    pass
+            elif "Frequency" in line or "Channel" in line:
+                try:
+                    ch = int(line.split(":", 1)[1].strip())
+                    info["channel"] = ch
+                    freq = 2412 if ch <= 14 else 5180 + (ch - 36) * 5
+                    info["frequency"] = freq
+                    info["freq"] = freq
                 except:
                     pass
     except:
@@ -455,9 +513,10 @@ def _get_link_win():
 def get_power_save():
     if OS == "Linux":
         iface = get_wifi_interface()
-        if not iface: return True
+        if not iface:
+            return True
         r = run_cmd(["iw", "dev", iface, "get", "power_save"], timeout=5)
-        return "off" in r.stdout.lower()
+        return "Power save: off" not in r.stdout
     elif OS == "Darwin":
         try:
             r = run_cmd(["networksetup", "-getairportpower", "en0"], timeout=5)
@@ -466,9 +525,25 @@ def get_power_save():
             return True
     return True
 
-def ping_host(host, count=5):
-    if OS == "Windows":
-        cmd = ["ping", "-n", str(count), "-w", "3000", host]
-    else:
-        cmd = ["ping", "-c", str(count), "-W", "3", host]
-    return run_cmd(cmd, timeout=15)
+def get_gateway():
+    try:
+        if OS == "Linux":
+            r = run_cmd(["ip", "route", "show", "default"], timeout=5)
+            m = re.search(r"default via (\S+)", r.stdout)
+            if m: return m.group(1)
+        elif OS == "Darwin":
+            r = run_cmd(["netstat", "-nr", "default"], timeout=5)
+            for line in r.stdout.splitlines():
+                if "default" in line:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        return parts[1]
+        elif OS == "Windows":
+            r = run_cmd(["ipconfig"], timeout=5)
+            for line in r.stdout.splitlines():
+                if "Default Gateway" in line and ":" in line:
+                    gw = line.split(":", 1)[1].strip()
+                    if gw and gw != "": return gw
+    except:
+        pass
+    return None

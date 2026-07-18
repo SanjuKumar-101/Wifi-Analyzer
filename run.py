@@ -1,10 +1,32 @@
 #!/usr/bin/env python3
-import sys, os, subprocess, time, re
+import sys, os, subprocess, time, re, platform
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
 
 from utils import get_wifi_interface, get_active_ssid, get_link_stats, get_current_connection, run_cmd
+
+OS = platform.system()
+
+def check_dependencies():
+    missing = []
+    if OS == "Linux":
+        for cmd, pkg in [("iw", "iw"), ("curl", "curl"), ("ping", "iputils-ping")]:
+            if not subprocess.run(["which", cmd], capture_output=True).returncode == 0:
+                missing.append((cmd, pkg))
+    elif OS == "Darwin":
+        for cmd in ["curl", "ping"]:
+            if not subprocess.run(["which", cmd], capture_output=True).returncode == 0:
+                missing.append((cmd, cmd))
+    if missing:
+        print("\x1b[33m[!] Missing system dependencies:\x1b[0m")
+        for cmd, pkg in missing:
+            print(f"    - {cmd} ({pkg})")
+        if OS == "Linux":
+            pkgs = " ".join(p for _, p in missing)
+            print(f"\n    Install with: sudo apt install {pkgs}")
+        print()
+    return len(missing) == 0
 
 BANNER = """
 \x1b[36m
@@ -163,6 +185,7 @@ def cmd_full():
 
 def main():
     banner()
+    check_dependencies()
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
         if cmd == "scan": cmd_scan()
