@@ -100,9 +100,50 @@ def _scan_linux():
         return []
     result = run_cmd(["iw", "dev", iface, "scan"], timeout=30)
     if result.returncode != 0:
+        nm_result = run_cmd(["nmcli", "dev", "wifi", "list"], timeout=15)
+        if nm_result.returncode == 0 and nm_result.stdout.strip():
+            return _parse_nmcli_scan(nm_result.stdout)
         print(f"Scan failed: {result.stderr.strip()}", file=sys.stderr)
         return []
     return _parse_iw_scan(result.stdout)
+
+def _parse_nmcli_scan(output):
+    networks = []
+    lines = output.strip().splitlines()
+    if len(lines) < 2:
+        return []
+    for line in lines[1:]:
+        parts = line.split()
+        if len(parts) < 6:
+            continue
+        ssid = parts[0]
+        signal_pct = 0
+        channel = 0
+        bssid = ""
+        security = "Open"
+        for i, p in enumerate(parts):
+            if p.endswith("dBm"):
+                try: signal_pct = int(parts[i-1])
+                except: pass
+            elif p == "CH:":
+
+                try: channel = int(parts[i+1])
+                except: pass
+            elif ":" in p and len(p) == 17 and p.count(":") == 5:
+                bssid = p.upper()
+            elif "WPA2" in p or "WPA" in p:
+                security = "WPA2"
+            elif "802.1X" in p or "WPA1" in p:
+                security = "WPA2-Enterprise"
+        signal_dbm = -100 + signal_pct if signal_pct else -100
+        band = "2.4GHz" if channel <= 14 else "5GHz"
+        freq = 2412 if channel <= 14 else 5180 + (channel - 36) * 5
+        networks.append({
+            "bssid": bssid or f"unknown".upper(), "ssid": ssid, "signal_dbm": signal_dbm,
+            "channel": channel, "band": band, "frequency": freq,
+            "security": security, "stations": 0, "channel_util": 0, "is_mine": False,
+        })
+    return networks
 
 def _parse_iw_scan(output):
     networks = []
